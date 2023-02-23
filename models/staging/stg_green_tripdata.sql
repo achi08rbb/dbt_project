@@ -1,9 +1,16 @@
-{{ config(materialized="view") }}
+{{ config(materialized='view') }}
 
-select 
--- identifiers
+with tripdata as 
+(
+  select *,
+    row_number() over(partition by cast(vendorid as integer), lpep_pickup_datetime) as rn
+  from {{ source('staging','green') }}
+  where vendorid is not null 
+)
+select
+    -- identifiers
     {{ dbt_utils.surrogate_key(['vendorid', 'lpep_pickup_datetime']) }} as tripid,
-    cast(vendorid as integer) as vendorid,
+    cast(vendorid as numeric) as vendorid,
     cast(ratecodeid as integer) as ratecodeid,
     cast(pulocationid as integer) as  pickup_locationid,
     cast(dolocationid as integer) as dropoff_locationid,
@@ -30,16 +37,13 @@ select
     cast(payment_type as integer) as payment_type,
     {{ get_payment_type_description('payment_type') }} as payment_type_description, 
     cast(congestion_surcharge as numeric) as congestion_surcharge
-from {{ source("staging", "green") }}
-where vendorid is not null
--- limit 100 
--- you don't need to add limit 100 here if you run the dbt build and add the variable 'is_test_run': True, you would be doing its contents
+from tripdata
+where rn = 1
 
 
 -- dbt build --m <model.sql> --var 'is_test_run: false'
 {% if var('is_test_run', default=true) %}
 
-  limit 100 -- content
+  limit 100
 
 {% endif %}
-
